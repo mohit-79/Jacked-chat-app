@@ -14,9 +14,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
 
   // Single source of truth for "go to app" — driven only by committed auth
-  // state, never by the submit handler directly. This removes the race where
-  // navigate() fired before context had actually flushed the new user,
-  // which could bounce back to "/" and look like a phantom auth failure.
+  // state, never by the submit handler directly.
   useEffect(() => {
     if (user) {
       console.log("[Login] user present, navigating to /app", user.user_id);
@@ -26,7 +24,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (busy) return; // guard against double-submit (e.g. double Enter/click)
+    if (busy) return;
     setBusy(true);
     try {
       if (mode === "login") {
@@ -35,11 +33,21 @@ export default function Login() {
       } else {
         console.log("[Login] creating account", email);
         await register(name, email, password);
+        // On successful register, show a welcome toast — navigation happens
+        // automatically via the effect above once `user` is set in context.
+        toast.success("Account created! Welcome 🎉");
       }
-      // Navigation happens automatically via the effect above once `user` updates.
     } catch (err) {
       console.error("[Login] auth error", err?.response?.status, err?.response?.data);
-      toast.error(err.response?.data?.detail || "Authentication failed");
+      const detail = err.response?.data?.detail;
+      // If the error suggests the account already exists, switch to login mode
+      // and pre-fill so the user can just hit sign-in without re-typing.
+      if (mode === "register" && (err.response?.status === 409 || (typeof detail === "string" && detail.toLowerCase().includes("exist")))) {
+        toast.error("Account already exists — switching to sign-in for you.");
+        setMode("login");
+      } else {
+        toast.error(detail || "Authentication failed");
+      }
     } finally {
       setBusy(false);
     }

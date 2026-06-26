@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, memo, useCallback } from "react";
-import { Send, Paperclip, Zap, Cloud, Hash, User as UserIcon, FileText, Image as ImageIcon, Download, AlertCircle, RotateCcw, X } from "lucide-react";
+import { Send, Paperclip, Zap, Cloud, Hash, User as UserIcon, FileText, Image as ImageIcon, Download, AlertCircle, RotateCcw, X, RefreshCw } from "lucide-react";
 import { fileDownloadUrl } from "@/lib/api";
 
 function bytesPretty(n) {
@@ -22,7 +22,6 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// WhatsApp-style date divider label: Today / Yesterday / weekday / full date.
 function dateLabel(iso) {
   const d = new Date(iso);
   const now = new Date();
@@ -39,11 +38,85 @@ function sameDay(a, b) {
   return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
 }
 
-const MessageBubble = memo(function MessageBubble({ msg, isSelf, onRetry }) {
+// WebRTC file bubble — shows a placeholder with resend option
+function WebRTCFileBubble({ msg, isSelf, onResendFile }) {
+  const [showMenu, setShowMenu] = useState(false);
+  // A WebRTC-transferred file that has no cloud file_id
+  const wasWebRTC = msg.transfer_mode === "webrtc";
+  const hasCloudCopy = !!msg.file?.file_id;
+
+  return (
+    <div
+      className="relative flex items-center gap-3 p-3 bg-white/60 rounded-xl border-2 border-dashed border-[#1A1A1A]/40 min-w-[200px] cursor-pointer select-none"
+      onClick={() => setShowMenu((v) => !v)}
+    >
+      <div className="w-10 h-10 rounded-lg bg-[#A8E6CF]/40 border-2 border-[#1A1A1A]/30 flex items-center justify-center shrink-0">
+        {wasWebRTC ? <Zap size={18} className="text-[#0F8F5F]" /> : <FileText size={18} className="text-[#1A1A1A]" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-sm truncate">{msg.file?.filename || "File"}</div>
+        <div className="text-xs text-[#4A4A4A]">{bytesPretty(msg.file?.size)}</div>
+        <div className="text-[10px] font-bold text-[#4A4A4A] flex items-center gap-1 mt-0.5">
+          {wasWebRTC && !hasCloudCopy ? (
+            <><Zap size={9} className="text-[#0F8F5F]" /> Sent via WebRTC (tap to options)</>
+          ) : (
+            <><Cloud size={9} /> Cloud</>
+          )}
+        </div>
+      </div>
+
+      {showMenu && (
+        <div className="absolute bottom-full left-0 mb-2 z-50 bg-white border-2 border-[#1A1A1A] rounded-xl shadow-[4px_4px_0_#1A1A1A] overflow-hidden min-w-[200px]">
+          {hasCloudCopy && (
+            <a
+              href={fileDownloadUrl(msg.file.file_id)}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
+              className="flex items-center gap-3 px-4 py-3 hover:bg-[#FFDFD3] text-sm font-semibold border-b border-[#1A1A1A]/10"
+            >
+              <Download size={14} /> Download file
+            </a>
+          )}
+          {wasWebRTC && !hasCloudCopy && (
+            <div className="px-4 py-2 text-[11px] text-[#4A4A4A] border-b border-[#1A1A1A]/10">
+              WebRTC files aren't stored in the cloud.
+            </div>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowMenu(false); onResendFile?.({ originalMsg: msg, viaWebRTC: false }); }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FFDFD3] text-sm font-semibold border-b border-[#1A1A1A]/10"
+          >
+            <RefreshCw size={14} /> Ask to resend via Cloud
+          </button>
+          {isSelf === false && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowMenu(false); onResendFile?.({ originalMsg: msg, viaWebRTC: true }); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#A8E6CF]/40 text-sm font-semibold"
+            >
+              <Zap size={14} /> Ask to resend via WebRTC
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowMenu(false); }}
+            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FDFBF7] text-sm text-[#4A4A4A]"
+          >
+            <X size={14} /> Close
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MessageBubble = memo(function MessageBubble({ msg, isSelf, onRetry, onResendFile }) {
   const file = msg.file;
   const isImage = file?.content_type?.startsWith("image/");
   const isFailed = msg._status === "failed";
   const isSending = msg._status === "sending";
+  // A file message that came over WebRTC (no cloud file_id) or any file
+  const isFileMsg = !!file;
+  const needsResendUI = isFileMsg && !isSending;
 
   return (
     <div className={`flex ${isSelf ? "justify-end" : "justify-start"} ${msg._animate ? "bubble-in" : ""}`}>
@@ -54,23 +127,28 @@ const MessageBubble = memo(function MessageBubble({ msg, isSelf, onRetry }) {
         <div className={`p-3 border-2 border-[#1A1A1A] rounded-2xl ${isSelf ? "bg-[#FFD3B6] rounded-tr-sm" : "bg-white rounded-tl-sm"} shadow-[3px_3px_0_#1A1A1A] ${isSending ? "opacity-70" : ""} ${isFailed ? "border-red-500" : ""}`}>
           {file && (
             <div className="mb-2">
-              {isImage ? (
-                <a href={file.file_id ? fileDownloadUrl(file.file_id) : undefined} target="_blank" rel="noreferrer">
-                  <img src={file.file_id ? fileDownloadUrl(file.file_id) : undefined} alt={file.filename} className="rounded-lg max-h-64 border-2 border-[#1A1A1A] object-cover" />
+              {isSending ? (
+                // While sending, show a simple preview
+                isImage ? (
+                  <div className="rounded-lg max-h-64 border-2 border-[#1A1A1A] bg-[#FDFBF7] flex items-center justify-center w-48 h-32">
+                    <ImageIcon size={32} className="text-[#4A4A4A]" />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-2 bg-white/60 rounded-lg border border-[#1A1A1A]/30 min-w-[200px]">
+                    <FileText size={28} className="text-[#1A1A1A] shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm truncate">{file.filename}</div>
+                      <div className="text-xs text-[#4A4A4A]">{bytesPretty(file.size)}</div>
+                    </div>
+                  </div>
+                )
+              ) : isImage && file.file_id ? (
+                <a href={fileDownloadUrl(file.file_id)} target="_blank" rel="noreferrer">
+                  <img src={fileDownloadUrl(file.file_id)} alt={file.filename} className="rounded-lg max-h-64 border-2 border-[#1A1A1A] object-cover" />
                 </a>
               ) : (
-                <a
-                  href={file.file_id ? fileDownloadUrl(file.file_id) : undefined}
-                  target="_blank" rel="noreferrer"
-                  className="flex items-center gap-3 p-2 bg-white/60 rounded-lg border border-[#1A1A1A]/30 min-w-[200px]"
-                >
-                  <FileText size={28} className="text-[#1A1A1A] shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-sm truncate">{file.filename}</div>
-                    <div className="text-xs text-[#4A4A4A]">{bytesPretty(file.size)}</div>
-                  </div>
-                  {file.file_id && <Download size={16} />}
-                </a>
+                // All non-sending files use the WebRTC bubble with resend menu
+                <WebRTCFileBubble msg={msg} isSelf={isSelf} onResendFile={onResendFile} />
               )}
 
               {isSending && msg._progress != null ? (
@@ -83,7 +161,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isSelf, onRetry }) {
                     <span>{speedPretty(msg._speed)}</span>
                   </div>
                 </div>
-              ) : (
+              ) : !isSending && (
                 <div className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-[#1A1A1A] text-[10px] font-bold ${msg.transfer_mode === "webrtc" ? "bg-[#A8E6CF]" : "bg-[#FFDFD3]"}`}>
                   {msg.transfer_mode === "webrtc" ? <Zap size={10} /> : <Cloud size={10} />}
                   {msg.transfer_mode === "webrtc" ? "ULTRA-FAST" : "CLOUD"}
@@ -121,7 +199,7 @@ function DateDivider({ label }) {
   );
 }
 
-export default function ChatPanel({ user, chat, messages, peers, onSend, onTyping, onRetry }) {
+export default function ChatPanel({ user, chat, messages, peers, onSend, onTyping, onRetry, onResendFile }) {
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   const [sending, setSending] = useState(false);
@@ -130,6 +208,8 @@ export default function ChatPanel({ user, chat, messages, peers, onSend, onTypin
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
   const wasNearBottomRef = useRef(true);
+  // Track previous chat_id to detect chat switch
+  const prevChatIdRef = useRef(null);
 
   const otherUserIsPeer = chat?.other_user && peers.some((p) => p.user_id === chat.other_user.user_id);
   const canUseWebRTC = chat?.type === "dm" && otherUserIsPeer;
@@ -147,9 +227,16 @@ export default function ChatPanel({ user, chat, messages, peers, onSend, onTypin
     }
   }, [messages]);
 
+  // On chat switch: instant scroll to bottom without animation
   useEffect(() => {
-    wasNearBottomRef.current = true;
-    bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    if (chat?.chat_id !== prevChatIdRef.current) {
+      prevChatIdRef.current = chat?.chat_id;
+      wasNearBottomRef.current = true;
+      // Use requestAnimationFrame so DOM has updated
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      });
+    }
   }, [chat?.chat_id]);
 
   const itemsWithDividers = useMemo(() => {
@@ -195,6 +282,7 @@ export default function ChatPanel({ user, chat, messages, peers, onSend, onTypin
 
   return (
     <main className="flex-1 flex flex-col bg-[#FDFBF7] min-w-0">
+      {/* Chat header — renders immediately from `chat` prop, no loading state */}
       <div className="px-6 py-4 border-b-2 border-[#1A1A1A] bg-white flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-full border-2 border-[#1A1A1A] overflow-hidden flex items-center justify-center" style={{
@@ -227,7 +315,7 @@ export default function ChatPanel({ user, chat, messages, peers, onSend, onTypin
       <div
         ref={scrollRef}
         onScroll={() => { wasNearBottomRef.current = checkNearBottom(); }}
-        className="flex-1 overflow-y-auto p-6 space-y-3 scroll-smooth [overflow-anchor:none]"
+        className="flex-1 overflow-y-auto p-6 space-y-3 [overflow-anchor:none]"
       >
         {messages.length === 0 && (
           <div className="text-center text-[#4A4A4A] mt-12">
@@ -239,7 +327,7 @@ export default function ChatPanel({ user, chat, messages, peers, onSend, onTypin
           item.type === "divider" ? (
             <DateDivider key={item.key} label={item.label} />
           ) : (
-            <MessageBubble key={item.key} msg={item.msg} isSelf={item.msg.sender_id === user.user_id} onRetry={onRetry} />
+            <MessageBubble key={item.key} msg={item.msg} isSelf={item.msg.sender_id === user.user_id} onRetry={onRetry} onResendFile={onResendFile} />
           )
         )}
         <div ref={bottomRef} />

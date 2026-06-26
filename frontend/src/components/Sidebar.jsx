@@ -4,7 +4,8 @@ import StoryAvatar from "@/components/StoryAvatar";
 
 function Sidebar({
   user, chats, peers, friends, stories, activeChat,
-  onSelectChat, onStartDM, onOpenStories, onOpenProfile, onOpenFriends, onLogout, connected, currentPath
+  onSelectChat, onStartDM, onOpenStories, onOpenProfile, onOpenFriends, onLogout, connected, currentPath,
+  unreadCounts = {}
 }) {
   const [search, setSearch] = useState("");
 
@@ -78,30 +79,46 @@ function Sidebar({
 
       {/* Chat list */}
       <div className="flex-1 overflow-y-auto">
-        {filteredChats.map((c) => (
-          <button
-            key={c.chat_id}
-            data-testid={`chat-item-${c.chat_id}`}
-            onClick={() => onSelectChat(c)}
-            className={`w-full text-left px-4 py-3 flex items-center gap-3 border-b border-[#1A1A1A]/10 transition-all duration-150 ${
-              activeChat?.chat_id === c.chat_id && currentPath === "/app" ? "bg-[#FFDFD3]" : "hover:bg-[#FDFBF7]"
-            }`}
-          >
-            <div className="w-11 h-11 rounded-full border-2 border-[#1A1A1A] overflow-hidden flex items-center justify-center shrink-0" style={{
-              background: c.type === "public" ? "#D4F0F0" : c.type === "self" ? "#E8DFF5" : "#FFD3B6"
-            }}>
-              {c.type === "public" ? <Hash size={18} /> : c.type === "self" ? <UserIcon size={18} /> : (
-                c.other_user?.picture ? <img src={c.other_user.picture} alt="" className="w-full h-full object-cover" /> : <span className="font-bold">{c.title[0]?.toUpperCase()}</span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold truncate">{c.title}</div>
-              <div className="text-xs text-[#4A4A4A] truncate">
-                {c.type === "public" ? "Everyone's hangout" : c.type === "self" ? "Notes & files just for you" : c.last_message?.content || "Tap to chat"}
+        {filteredChats.map((c) => {
+          const unread = unreadCounts[c.chat_id] || 0;
+          const isActive = activeChat?.chat_id === c.chat_id && currentPath === "/app";
+          return (
+            <button
+              key={c.chat_id}
+              data-testid={`chat-item-${c.chat_id}`}
+              onClick={() => onSelectChat(c)}
+              className={`w-full text-left px-4 py-3 flex items-center gap-3 border-b border-[#1A1A1A]/10 transition-colors duration-100 ${
+                isActive ? "bg-[#FFDFD3]" : unread > 0 ? "bg-[#FFF8F5]" : "hover:bg-[#FDFBF7]"
+              }`}
+            >
+              <div className="relative shrink-0">
+                <div className="w-11 h-11 rounded-full border-2 border-[#1A1A1A] overflow-hidden flex items-center justify-center" style={{
+                  background: c.type === "public" ? "#D4F0F0" : c.type === "self" ? "#E8DFF5" : "#FFD3B6"
+                }}>
+                  {c.type === "public" ? <Hash size={18} /> : c.type === "self" ? <UserIcon size={18} /> : (
+                    c.other_user?.picture ? <img src={c.other_user.picture} alt="" className="w-full h-full object-cover" /> : <span className="font-bold">{c.title[0]?.toUpperCase()}</span>
+                  )}
+                </div>
+                {/* Unread badge */}
+                {unread > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#FF6B6B] border-2 border-white rounded-full flex items-center justify-center text-[10px] font-black text-white leading-none">
+                    {unread > 99 ? "99+" : unread}
+                  </span>
+                )}
               </div>
-            </div>
-          </button>
-        ))}
+              <div className="flex-1 min-w-0">
+                <div className={`truncate ${unread > 0 ? "font-black" : "font-semibold"}`}>{c.title}</div>
+                <div className={`text-xs truncate ${unread > 0 ? "text-[#1A1A1A] font-semibold" : "text-[#4A4A4A]"}`}>
+                  {c.type === "public" ? "Everyone's hangout" : c.type === "self" ? "Notes & files just for you" : c.last_message?.content || "Tap to chat"}
+                </div>
+              </div>
+              {/* Unread dot indicator on the right */}
+              {unread > 0 && !isActive && (
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FF6B6B] shrink-0" />
+              )}
+            </button>
+          );
+        })}
 
         {/* Same-network peers */}
         {filteredPeers.length > 0 && (
