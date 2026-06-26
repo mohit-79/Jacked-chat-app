@@ -21,6 +21,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # ---------- ENV ----------
 MONGO_URL = os.environ['MONGO_URL']
+print("MONGO_URL =", MONGO_URL[:40])
 DB_NAME = os.environ['DB_NAME']
 JWT_SECRET = os.environ['JWT_SECRET']
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
