@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { api, fileDownloadUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { Plus, X, ChevronLeft, ChevronRight, Eye, Globe, Users as UsersIcon, Upload } from "lucide-react";
+import {  X, ChevronLeft, ChevronRight, Eye, Globe, Users as UsersIcon, Upload } from "lucide-react";
 import StoryAvatar from "@/components/StoryAvatar";
 import { toast } from "sonner";
 

@@ -1,4 +1,4 @@
-import { Home, Hash, User as UserIcon, Sparkles, LogOut, Users, Wifi, WifiOff, Search, Plus } from "lucide-react";
+import { Home, Hash, User as UserIcon, LogOut, Users, Wifi, WifiOff, Search, Plus } from "lucide-react";
 import { useState, useMemo, memo } from "react";
 import StoryAvatar from "@/components/StoryAvatar";
 
