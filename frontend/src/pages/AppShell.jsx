@@ -103,8 +103,8 @@ export default function AppShell() {
     log("webrtc file received", meta?.name, meta?.size);
 
     // Find which DM chat this belongs to
-    const chat = Object.values(messagesCacheRef.current).length
-      ? null : null; // we'll match by sender
+    // const chat = Object.values(messagesCacheRef.current).length
+    //   ? null : null; // we'll match by sender
 
     // Build a synthetic message that looks like a server message
     const syntheticMsg = {

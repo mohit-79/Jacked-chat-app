@@ -200,7 +200,7 @@ const MessageBubble = memo(function MessageBubble({ msg, isSelf, onRetry, onRequ
   const isFailed = msg._status === "failed";
   const isSending = msg._status === "sending";
   const isCancelled = msg._status === "cancelled";
-  const isWebRTCFile = msg.transfer_mode === "webrtc" && !msg._status?.includes("send"); // received webrtc
+  // const isWebRTCFile = msg.transfer_mode === "webrtc" && !msg._status?.includes("send"); // received webrtc
   const hasCloudFile = !!file?.file_id;
 
   // Determine which file UI to show
@@ -286,7 +286,7 @@ export default function ChatPanel({
   const [text, setText] = useState("");
   const [file, setFile] = useState(null);
   // Each ongoing transfer gets its own progress entry keyed by client_id
-  const [transferProgress, setTransferProgress] = useState({});
+  // const [transferProgress, setTransferProgress] = useState({});
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
@@ -332,10 +332,10 @@ export default function ChatPanel({
   }, [messages]);
 
   // Active file transfers — must be declared before any early return (Rules of Hooks)
-  const activeTransfers = useMemo(
-    () => messages.filter((m) => m._status === "sending" && m.file && m.sender_id === user?.user_id),
-    [messages, user]
-  );
+  // const activeTransfers = useMemo(
+  //   () => messages.filter((m) => m._status === "sending" && m.file && m.sender_id === user?.user_id),
+  //   [messages, user]
+  // );
 
   if (!chat) {
     return (
