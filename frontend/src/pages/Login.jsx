@@ -1,62 +1,22 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Home as HomeIcon, Zap, MessageCircle, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { SignIn, SignUp } from "@clerk/react";
 
 export default function Login() {
-  const { loginWithPassword, register, user } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const [mode, setMode] = useState("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const mode = searchParams.get("mode") === "signup" ? "signup" : "signin";
 
   useEffect(() => {
     if (user) navigate("/app", { replace: true });
   }, [user, navigate]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    try {
-      if (mode === "login") {
-        await loginWithPassword(email, password);
-      } else {
-        await register(name, email, password);
-        toast.success("Account created! Welcome 🎉");
-        // navigation happens via the effect above once user is set
-      }
-    } catch (err) {
-      const status = err?.response?.status;
-      const detail = err?.response?.data?.detail;
-      if (mode === "register") {
-        // Any server error on register: show the real message and let user retry.
-        // If it's a duplicate-account error, offer to switch to login.
-        if (status === 409 || (typeof detail === "string" && detail.toLowerCase().includes("exist"))) {
-          toast.error("Email already registered — switched to sign-in.");
-          setMode("login");
-        } else {
-          // Catch-all: show the actual server message so the user knows what happened.
-          toast.error(detail || `Registration failed (${status || "network error"}). Please try again.`);
-        }
-      } else {
-        toast.error(detail || "Incorrect email or password.");
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleGoogle = () => {
-    const redirectUrl = window.location.origin + "/app";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-  };
-
   return (
     <div className="min-h-screen w-full flex bg-[#FDFBF7]">
+      {/* Hero Banner (Left Side) */}
       <div className="hidden lg:flex w-1/2 relative overflow-hidden" style={{
         backgroundImage: "url(https://images.pexels.com/photos/23241104/pexels-photo-23241104.jpeg)",
         backgroundSize: "cover", backgroundPosition: "center",
@@ -77,7 +37,7 @@ export default function Login() {
             <div className="flex flex-col gap-3 mt-8">
               {[
                 [Zap, "#A8E6CF", "Ultra-fast WebRTC transfer at home"],
-                [Sparkles, "#FFD3B6", "Stories that vanish in 24h"],
+                [Sparkles, "#FFD3B6", "Serverless signaling and Clerk auth"],
                 [MessageCircle, "#E8DFF5", "Public, private & self-chat — your way"],
               ].map(([Icon, color, text]) => (
                 <div key={text} className="flex items-center gap-3 bg-white/10 backdrop-blur-sm p-3 rounded-xl border border-white/20">
@@ -90,70 +50,68 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden flex items-center gap-3 mb-8">
+      {/* Auth Panel (Right Side) */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 lg:p-12">
+        <div className="w-full max-w-md flex flex-col items-center">
+          <div className="lg:hidden flex items-center gap-3 mb-8 self-start">
             <div className="w-12 h-12 bg-[#FFD3B6] border-2 border-[#1A1A1A] shadow-[4px_4px_0_#1A1A1A] rounded-2xl flex items-center justify-center">
               <HomeIcon className="text-[#1A1A1A]" size={24} strokeWidth={2.5} />
             </div>
             <span className="font-head font-black text-2xl tracking-tight">HomeNexus</span>
           </div>
 
-          <h2 className="font-head font-black text-4xl tracking-tight mb-2">
-            {mode === "login" ? "Welcome back" : "Join the network"}
-          </h2>
-          <p className="text-[#4A4A4A] mb-8">
-            {mode === "login" ? "Sign in to your home network" : "Create your home account"}
-          </p>
-
-          <button onClick={handleGoogle} data-testid="google-login-btn"
-            className="w-full nb-btn bg-white rounded-xl py-3 px-4 font-semibold flex items-center justify-center gap-3 mb-4">
-            <svg width="20" height="20" viewBox="0 0 48 48">
-              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 8 3l5.7-5.7C34 6.5 29.3 4.5 24 4.5 12.7 4.5 3.5 13.7 3.5 25S12.7 45.5 24 45.5 44.5 36.3 44.5 25c0-1.5-.2-3-.4-4.5z"/>
-              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16.1 18.9 13 24 13c3 0 5.8 1.1 8 3l5.7-5.7C34 6.5 29.3 4.5 24 4.5 16.3 4.5 9.7 8.9 6.3 14.7z"/>
-              <path fill="#4CAF50" d="M24 45.5c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.5 2.2-7.2 2.2-5.2 0-9.7-3.3-11.3-8l-6.5 5C9.6 41 16.2 45.5 24 45.5z"/>
-              <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.3-4.1 5.6l6.2 5.2C40.9 36.3 44.5 31 44.5 25c0-1.5-.2-3-.4-4.5z"/>
-            </svg>
-            Continue with Google
-          </button>
-
-          <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-[2px] bg-[#1A1A1A]/10" />
-            <span className="text-xs uppercase tracking-wider text-[#4A4A4A]">or</span>
-            <div className="flex-1 h-[2px] bg-[#1A1A1A]/10" />
+          <div className="w-full flex justify-center scale-95 md:scale-100">
+            {mode === "signin" ? (
+              <SignIn 
+                routing="hash"
+                afterSignInUrl="/app"
+                signUpUrl="/?mode=signup"
+                appearance={{
+                  elements: {
+                    card: "border-2 border-[#1A1A1A] shadow-[8px_8px_0_#1A1A1A] rounded-2xl bg-white",
+                    headerTitle: "font-head font-black text-2xl text-[#1A1A1A]",
+                    headerSubtitle: "text-[#4A4A4A]",
+                    socialButtonsBlockButton: "border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] hover:bg-[#FDFBF7]",
+                    formButtonPrimary: "bg-[#FFD3B6] border-2 border-[#1A1A1A] text-[#1A1A1A] shadow-[3px_3px_0_#1A1A1A] hover:bg-[#FFC099] font-bold text-sm",
+                    formFieldInput: "border-2 border-[#1A1A1A] rounded-xl focus:ring-0 focus:border-[#FFD3B6]"
+                  }
+                }}
+              />
+            ) : (
+              <SignUp 
+                routing="hash"
+                afterSignUpUrl="/app"
+                signInUrl="/?mode=signin"
+                appearance={{
+                  elements: {
+                    card: "border-2 border-[#1A1A1A] shadow-[8px_8px_0_#1A1A1A] rounded-2xl bg-white",
+                    headerTitle: "font-head font-black text-2xl text-[#1A1A1A]",
+                    headerSubtitle: "text-[#4A4A4A]",
+                    socialButtonsBlockButton: "border-2 border-[#1A1A1A] shadow-[2px_2px_0_#1A1A1A] hover:bg-[#FDFBF7]",
+                    formButtonPrimary: "bg-[#FFD3B6] border-2 border-[#1A1A1A] text-[#1A1A1A] shadow-[3px_3px_0_#1A1A1A] hover:bg-[#FFC099] font-bold text-sm",
+                    formFieldInput: "border-2 border-[#1A1A1A] rounded-xl focus:ring-0 focus:border-[#FFD3B6]"
+                  }
+                }}
+              />
+            )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === "register" && (
-              <div>
-                <label className="block text-sm font-semibold mb-1">Name</label>
-                <input data-testid="register-name-input" type="text" required value={name}
-                  onChange={(e) => setName(e.target.value)} className="nb-input" placeholder="Your name" />
-              </div>
+          <div className="mt-6 text-sm text-[#4A4A4A]">
+            {mode === "signin" ? (
+              <>
+                Need an account?{" "}
+                <button onClick={() => setSearchParams({ mode: "signup" })} className="font-bold underline text-[#1A1A1A]">
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button onClick={() => setSearchParams({ mode: "signin" })} className="font-bold underline text-[#1A1A1A]">
+                  Sign in
+                </button>
+              </>
             )}
-            <div>
-              <label className="block text-sm font-semibold mb-1">Email</label>
-              <input data-testid="auth-email-input" type="email" required value={email}
-                onChange={(e) => setEmail(e.target.value)} className="nb-input" placeholder="you@home.com" />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-1">Password</label>
-              <input data-testid="auth-password-input" type="password" required value={password}
-                onChange={(e) => setPassword(e.target.value)} className="nb-input" placeholder="••••••••" />
-            </div>
-            <button type="submit" data-testid="auth-submit-btn" disabled={busy}
-              className="w-full nb-btn bg-[#FFD3B6] hover:bg-[#FFC099] rounded-xl py-3 px-4 font-bold text-[#1A1A1A] disabled:opacity-50">
-              {busy ? "Please wait..." : (mode === "login" ? "Sign in" : "Create account")}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-sm text-[#4A4A4A]">
-            {mode === "login" ? "New here?" : "Already have an account?"}{" "}
-            <button data-testid="toggle-auth-mode-btn"
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-              className="font-bold underline underline-offset-4 text-[#1A1A1A]">
-              {mode === "login" ? "Create account" : "Sign in"}
-            </button>
           </div>
         </div>
       </div>

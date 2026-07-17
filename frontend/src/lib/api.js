@@ -8,8 +8,23 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("hn_token");
+export async function getClerkToken() {
+  if (window.Clerk?.session) {
+    try {
+      const token = await window.Clerk.session.getToken();
+      if (token) {
+        localStorage.setItem("hn_token", token);
+      }
+      return token;
+    } catch (e) {
+      console.warn("[Auth] Failed to get Clerk token", e);
+    }
+  }
+  return localStorage.getItem("hn_token"); // fallback for testing
+}
+
+api.interceptors.request.use(async (config) => {
+  const token = await getClerkToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -26,7 +41,6 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const url = error.config?.url;
     console.warn(`[API] <- ${status || "ERR"} ${error.config?.method?.toUpperCase()} ${url}`, error.response?.data?.detail || error.message);
-    // Stale/invalid token: clear it so future requests don't keep failing silently.
     if (status === 401 && url !== "/auth/login" && url !== "/auth/register") {
       localStorage.removeItem("hn_token");
     }

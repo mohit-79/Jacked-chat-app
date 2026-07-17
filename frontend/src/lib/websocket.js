@@ -1,62 +1,79 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { getWebSocketUrl } from "@/lib/api";
+import { io } from "socket.io-client";
+import { getClerkToken } from "@/lib/api";
 
-const log = (...args) => console.log("[WS]", ...args);
+const log = (...args) => console.log("[Socket.IO]", ...args);
 
 export function useWebSocket(onEvent) {
-  const wsRef = useRef(null);
+  const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
   useEffect(() => {
     let stopped = false;
-    let reconnectTimer = null;
-    let reconnectAttempts = 0;
+    let socket = null;
 
-    function connect() {
+    async function initSocket() {
+      const token = await getClerkToken();
       if (stopped) return;
-      const url = getWebSocketUrl();
-      log("connecting...");
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-      ws.onopen = () => {
-        log("connected");
-        reconnectAttempts = 0;
+
+      const backendUrl = process.env.REACT_APP_BACKEND_URL;
+      log("Connecting to Socket.IO backend:", backendUrl);
+
+      // Initialize Socket.IO connection
+      socket = io(backendUrl, {
+        query: { token: token || "" },
+        transports: ["websocket"], // Enforce raw WebSocket transport for speed
+        autoConnect: true
+      });
+      socketRef.current = socket;
+
+      socket.on("connect", () => {
+        log("Connected successfully to real-time engine.");
         setConnected(true);
-      };
-      ws.onclose = (evt) => {
-        log("closed", evt.code, evt.reason || "(no reason)");
+      });
+
+      socket.on("disconnect", () => {
+        log("Disconnected from real-time engine.");
         setConnected(false);
-        if (!stopped) {
-          // Exponential backoff capped at 10s so a dead backend doesn't spam reconnects.
-          const delay = Math.min(10000, 1000 * Math.pow(1.5, reconnectAttempts++));
-          reconnectTimer = setTimeout(connect, delay);
-        }
-      };
-      ws.onerror = (e) => { log("error", e); try { ws.close(); } catch {} };
-      ws.onmessage = (evt) => {
-        try {
-          const data = JSON.parse(evt.data);
-          onEventRef.current?.(data);
-        } catch (e) {
-          log("failed to parse message", e);
-        }
-      };
+      });
+
+      // Listen for message events broadcasted from the Express backend
+      socket.on("message", (data) => {
+        log("Incoming socket message:", data?.type);
+        onEventRef.current?.(data);
+      });
+
+      socket.on("connect_error", (err) => {
+        log("Socket connection error:", err.message);
+      });
     }
-    connect();
+
+    initSocket();
+
     return () => {
       stopped = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      try { wsRef.current?.close(); } catch {}
+      if (socket) {
+        log("Disconnecting socket connection...");
+        socket.disconnect();
+      }
     };
   }, []);
 
+  // Send function wrapper that mimics raw websocket sends, emitting specialized events based on payload type.
   const send = useCallback((data) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(data));
+    const socket = socketRef.current;
+    if (socket && socket.connected) {
+      if (data && data.type) {
+        log("Emitting socket event:", data.type);
+        socket.emit(data.type, data);
+      } else {
+        log("Emitting generic message");
+        socket.emit("message", data);
+      }
     } else {
-      log("dropped send, socket not open:", data?.type);
+      log("Dropped emit, socket not connected:", data?.type);
     }
   }, []);
 

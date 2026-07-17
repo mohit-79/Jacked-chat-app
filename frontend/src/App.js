@@ -1,9 +1,8 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 import Login from "@/pages/Login";
-import AuthCallback from "@/pages/AuthCallback";
 import AppShell from "@/pages/AppShell";
 
 function ProtectedRoute({ children }) {
@@ -23,11 +22,6 @@ function ProtectedRoute({ children }) {
 }
 
 function AppRouter() {
-  const location = useLocation();
-  // Handle Emergent OAuth callback (session_id in URL fragment) synchronously
-  if (location.hash?.includes("session_id=")) {
-    return <AuthCallback />;
-  }
   return (
     <Routes>
       <Route path="/" element={<Login />} />

@@ -1,1 +1,6 @@
 frontend/node_modules/
+backend
+backend-node/uploads
+hfolder
+frontend/.env
+backend-node/.env

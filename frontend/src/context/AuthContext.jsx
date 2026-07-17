@@ -1,112 +1,94 @@
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useUser, useAuth as useClerkAuth } from "@clerk/react";
 import { api } from "@/lib/api";
 
 const AuthContext = createContext(null);
 const log = (...args) => console.log("[Auth]", ...args);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const authingRef = useRef(false);
+  const { user: clerkUser, isLoaded } = useUser();
+  const { signOut } = useClerkAuth();
+  
+  const [dbUser, setDbUser] = useState(null);
+  const [pinging, setPinging] = useState(false);
 
-  const checkAuth = useCallback(async () => {
-    if (window.location.hash?.includes("session_id=")) {
-      log("skip checkAuth, OAuth callback in progress");
-      setLoading(false);
-      return;
-    }
-    const token = localStorage.getItem("hn_token");
-    if (!token) {
-      log("checkAuth: no token");
-      setLoading(false);
-      return;
-    }
+  // Parse Clerk user into the schema that HomeNexus expects
+  const authUser = clerkUser ? {
+    user_id: clerkUser.id,
+    email: clerkUser.primaryEmailAddress?.emailAddress || "",
+    name: clerkUser.fullName || clerkUser.username || clerkUser.primaryEmailAddress?.emailAddress?.split("@")[0] || "User",
+    picture: clerkUser.imageUrl || null,
+    public_ip: dbUser?.publicIp || null,
+    bio: dbUser?.bio || "",
+    home_group: dbUser?.homeGroup || null
+  } : null;
+
+  // Function to register/ping user in backend database to record latest public IP
+  const pingBackend = useCallback(async (userToPing) => {
+    if (!userToPing || pinging) return;
+    setPinging(true);
     try {
-      log("checkAuth: verifying token");
-      const res = await api.get("/auth/me");
-      if (!authingRef.current) setUser(res.data);
-      log("checkAuth: valid", res.data?.user_id);
+      log("pinging backend to register/sync profile...", userToPing.user_id);
+      const res = await api.post("/users/ping", {
+        name: userToPing.name,
+        email: userToPing.email,
+        picture: userToPing.picture
+      });
+      log("backend sync successful, IP resolved to:", res.data?.publicIp);
+      setDbUser(res.data);
     } catch (e) {
-      log("checkAuth: invalid", e?.response?.status);
-      if (!authingRef.current) {
-        localStorage.removeItem("hn_token");
-        setUser(null);
-      }
+      log("backend sync failed:", e?.response?.status || e.message);
     } finally {
-      setLoading(false);
+      setPinging(false);
     }
-  }, []);
+  }, [pinging]);
 
-  useEffect(() => { checkAuth(); }, [checkAuth]);
-
-  const loginWithPassword = async (email, password) => {
-    authingRef.current = true;
-    try {
-      const res = await api.post("/auth/login", { email, password });
-      localStorage.setItem("hn_token", res.data.token);
-      setUser(res.data.user);
-      log("login: success", res.data.user?.user_id);
-      return res.data.user;
-    } catch (e) {
-      log("login: failed", e?.response?.status);
-      throw e;
-    } finally {
-      authingRef.current = false;
+  useEffect(() => {
+    if (clerkUser) {
+      pingBackend({
+        user_id: clerkUser.id,
+        name: clerkUser.fullName || clerkUser.username || clerkUser.primaryEmailAddress?.emailAddress?.split("@")[0] || "User",
+        email: clerkUser.primaryEmailAddress?.emailAddress || "",
+        picture: clerkUser.imageUrl || null
+      });
+    } else {
+      setDbUser(null);
     }
-  };
-
-  const register = async (name, email, password) => {
-    authingRef.current = true;
-    try {
-      log("register: creating account");
-      const res = await api.post("/auth/register", { email, password, name });
-      localStorage.setItem("hn_token", res.data.token);
-      // Small delay so the token is committed to localStorage before setUser
-      // triggers a re-render and any child API calls read it.
-      await new Promise((r) => setTimeout(r, 50));
-      setUser(res.data.user);
-      log("register: success, auto-logged-in", res.data.user?.user_id);
-      return res.data.user;
-    } catch (e) {
-      log("register: failed", e?.response?.status, e?.response?.data?.detail);
-      throw e;
-    } finally {
-      authingRef.current = false;
-    }
-  };
-
-  const completeEmergentSession = async (session_id) => {
-    authingRef.current = true;
-    try {
-      const res = await api.post("/auth/session", { session_id });
-      if (res.data.session_token) localStorage.setItem("hn_token", res.data.session_token);
-      setUser(res.data.user);
-      log("oauth: success", res.data.user?.user_id);
-      return res.data.user;
-    } catch (e) {
-      log("oauth: failed", e?.response?.status);
-      throw e;
-    } finally {
-      authingRef.current = false;
-    }
-  };
+  }, [clerkUser]);
 
   const logout = async () => {
-    log("logout");
-    try { await api.post("/auth/logout"); } catch (e) { log("logout ignored", e?.message); }
-    localStorage.removeItem("hn_token");
-    setUser(null);
+    log("logging out via Clerk...");
+    try {
+      await signOut();
+      setDbUser(null);
+    } catch (e) {
+      log("logout failed", e.message);
+    }
   };
 
   const refreshUser = async () => {
-    try {
-      const res = await api.get("/auth/me");
-      setUser(res.data);
-    } catch (e) { log("refreshUser failed", e?.response?.status); }
+    if (clerkUser) {
+      await pingBackend({
+        user_id: clerkUser.id,
+        name: clerkUser.fullName || clerkUser.username || clerkUser.primaryEmailAddress?.emailAddress?.split("@")[0] || "User",
+        email: clerkUser.primaryEmailAddress?.emailAddress || "",
+        picture: clerkUser.imageUrl || null
+      });
+    }
   };
 
+  const loading = !isLoaded || (clerkUser && !dbUser && pinging);
+
   return (
-    <AuthContext.Provider value={{ user, loading, loginWithPassword, register, completeEmergentSession, logout, refreshUser, setUser }}>
+    <AuthContext.Provider value={{ 
+      user: authUser, 
+      loading, 
+      logout, 
+      refreshUser,
+      // mock placeholders for compatibility
+      loginWithPassword: () => Promise.reject("Use Clerk component instead"),
+      register: () => Promise.reject("Use Clerk component instead")
+    }}>
       {children}
     </AuthContext.Provider>
   );

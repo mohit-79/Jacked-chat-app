@@ -6,9 +6,7 @@ import { useWebSocket } from "@/lib/websocket";
 import { WebRTCTransfer } from "@/lib/webrtc";
 import Sidebar from "@/components/Sidebar";
 import ChatPanel from "@/components/ChatPanel";
-import StoriesPage from "@/pages/StoriesPage";
 import ProfilePage from "@/pages/ProfilePage";
-import FriendsPanel from "@/components/FriendsPanel";
 import { toast } from "sonner";
 
 const log = (...args) => console.log("[AppShell]", ...args);
@@ -61,12 +59,11 @@ export default function AppShell() {
   const location = useLocation();
 
   const [chats, setChats] = useState([]);
-  const [friends, setFriends] = useState([]);
+  const [friends] = useState([]);
   const [peers, setPeers] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [stories, setStories] = useState([]);
-  const [showFriends, setShowFriends] = useState(false);
+  const [stories] = useState([]);
   const [unreadCounts, setUnreadCounts] = useState({});
   // Mobile: show sidebar or chat pane
   const [mobilePanelView, setMobilePanelView] = useState("sidebar"); // "sidebar" | "chat"
@@ -223,32 +220,23 @@ export default function AppShell() {
     }
   }, [send, user]);
 
-  const loadFriends = useCallback(async () => {
+  const loadPeers = useCallback(async () => {
     try {
-      const [f, p] = await Promise.all([api.get("/friends"), api.get("/network/peers")]);
-      setFriends(f.data);
+      const p = await api.get("/users", { params: { sameLan: true } });
       setPeers(p.data);
-    } catch (e) { log("loadFriends failed", e?.message); }
-  }, []);
-
-  const loadStories = useCallback(async () => {
-    try {
-      const res = await api.get("/stories");
-      setStories(res.data);
-    } catch (e) { log("loadStories failed", e?.message); }
+    } catch (e) { log("loadPeers failed", e?.message); }
   }, []);
 
   useEffect(() => {
     loadChats();
-    loadFriends();
-    loadStories();
+    loadPeers();
     const defaultChat = { chat_id: "public:home", type: "public", title: "Public Home Channel" };
     setActiveChat(defaultChat);
     api.get("/chats/public:home/messages").then((res) => {
       messagesCacheRef.current["public:home"] = res.data;
       setMessages(res.data);
     }).catch(() => {});
-  }, [loadChats, loadFriends, loadStories]);
+  }, [loadChats, loadPeers]);
 
   const loadMessages = useCallback((chat) => {
     const cached = messagesCacheRef.current[chat.chat_id];
@@ -489,10 +477,10 @@ export default function AppShell() {
     ));
   }, []);
 
-  const handleOpenStories = useCallback(() => navigate("/app/stories"), [navigate]);
+  const handleOpenStories = useCallback(() => {}, []);
   const handleOpenProfile = useCallback(() => navigate("/app/profile"), [navigate]);
-  const handleOpenFriends = useCallback(() => setShowFriends(true), []);
-  const handleCloseFriends = useCallback(() => setShowFriends(false), []);
+  const handleOpenFriends = useCallback(() => {}, []);
+  const handleCloseFriends = useCallback(() => {}, []);
   const handleLogout = useCallback(async () => { await logout(); navigate("/"); }, [logout, navigate]);
   const handleTyping = useCallback(() => {
     const chat = activeChatRef.current;
@@ -560,19 +548,9 @@ export default function AppShell() {
               onMobileBack={handleMobileBack}
             />
           } />
-          <Route path="/stories" element={<StoriesPage stories={stories} onChange={loadStories} />} />
-          <Route path="/profile" element={<ProfilePage friends={friends} peers={peers} onChange={loadFriends} />} />
+          <Route path="/profile" element={<ProfilePage friends={friends} peers={peers} onChange={loadPeers} />} />
         </Routes>
       </div>
-
-      {showFriends && (
-        <FriendsPanel
-          onClose={handleCloseFriends}
-          onChange={loadFriends}
-          friends={friends}
-          peers={peers}
-        />
-      )}
     </div>
   );
 }
