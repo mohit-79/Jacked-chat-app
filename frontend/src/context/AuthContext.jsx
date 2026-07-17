@@ -45,20 +45,26 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const clerkUserId = clerkUser?.id;
+  const clerkFullName = clerkUser?.fullName;
+  const clerkUsername = clerkUser?.username;
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress;
+  const clerkImageUrl = clerkUser?.imageUrl;
+
   useEffect(() => {
-    if (clerkUser) {
+    if (clerkUserId) {
       setSyncAttempted(false);
       pingBackend({
-        user_id: clerkUser.id,
-        name: clerkUser.fullName || clerkUser.username || clerkUser.primaryEmailAddress?.emailAddress?.split("@")[0] || "User",
-        email: clerkUser.primaryEmailAddress?.emailAddress || "",
-        picture: clerkUser.imageUrl || null
+        user_id: clerkUserId,
+        name: clerkFullName || clerkUsername || clerkEmail?.split("@")[0] || "User",
+        email: clerkEmail || "",
+        picture: clerkImageUrl || null
       });
     } else {
       setDbUser(null);
       setSyncAttempted(false);
     }
-  }, [clerkUser, pingBackend]);
+  }, [clerkUserId, clerkFullName, clerkUsername, clerkEmail, clerkImageUrl, pingBackend]);
 
   const logout = async () => {
     log("logging out via Clerk...");
