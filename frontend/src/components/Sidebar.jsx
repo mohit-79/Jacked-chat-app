@@ -118,9 +118,9 @@ function Sidebar({
             <div className="space-y-1">
               {searchResults.map((su) => (
                 <button
-                  key={su.clerkId}
+                  key={su.user_id} // Align key with user_id returned from user search API
                   onClick={() => {
-                    onStartDM(su.clerkId);
+                    onStartDM(su.user_id); // Start DM using user_id instead of undefined clerkId
                     setSearch("");
                   }}
                   className="w-full text-left p-2 flex items-center gap-3 rounded-lg border border-[#1A1A1A]/10 hover:bg-[#FDFBF7] transition-all"
@@ -211,8 +211,8 @@ function Sidebar({
                 <div className="space-y-1">
                   {peers.map((p) => (
                     <button
-                      key={p.clerkId}
-                      onClick={() => onStartDM(p.clerkId)}
+                      key={p.user_id} // Align key with user_id returned from LAN discovery api
+                      onClick={() => onStartDM(p.user_id)} // Start DM using user_id instead of undefined clerkId
                       className="w-full text-left p-2 flex items-center gap-3 rounded-lg hover:bg-[#FDFBF7] transition-all"
                     >
                       <div className="w-10 h-10 rounded-full border-2 border-[#1A1A1A] overflow-hidden bg-[#FFD3B6] flex items-center justify-center shrink-0">

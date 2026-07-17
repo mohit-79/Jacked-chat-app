@@ -238,16 +238,33 @@ export default function AppShell() {
     }).catch(() => {});
   }, [loadChats, loadPeers]);
 
+  // Load message history from DB and cache
   const loadMessages = useCallback((chat) => {
     const cached = messagesCacheRef.current[chat.chat_id];
+    // Keep in-progress (sending/pending) messages from the cache so we don't wipe them out during reload
+    const sendingMessages = cached ? cached.filter(m => m._status === "sending" || m._status === "pending") : [];
+
     if (cached && cached.length > 0) {
       setMessages(cached);
     } else {
       setMessages([]);
     }
     api.get(`/chats/${chat.chat_id}/messages`).then((res) => {
-      messagesCacheRef.current[chat.chat_id] = res.data;
-      if (activeChatRef.current?.chat_id === chat.chat_id) setMessages(res.data);
+      const freshMessages = res.data;
+      const combined = [...freshMessages];
+
+      // Merge background sending messages back in if they aren't already written to DB
+      sendingMessages.forEach(sm => {
+        if (!combined.some(m => m.message_id === sm.message_id || (sm.client_id && m.client_id === sm.client_id))) {
+          combined.push(sm);
+        }
+      });
+
+      messagesCacheRef.current[chat.chat_id] = combined;
+      // Guard: Only update active messages state if the user is still viewing the same chat room
+      if (activeChatRef.current?.chat_id === chat.chat_id) {
+        setMessages(combined);
+      }
     }).catch((e) => log("load messages failed", e?.message));
   }, []);
 
@@ -264,6 +281,7 @@ export default function AppShell() {
     setMobilePanelView("chat");
   }, [navigate, loadMessages]);
 
+  // Start DM from search or LAN list
   const handleStartDM = useCallback(async (otherUserId) => {
     try {
       const res = await api.post(`/chats/dm/${otherUserId}`);
@@ -276,6 +294,13 @@ export default function AppShell() {
         return next;
       });
       loadMessages(chat);
+      
+      // Optimistically add the new DM chat to the sidebar chats list so it is immediately visible
+      setChats((prev) => {
+        if (prev.some((c) => c.chat_id === chat.chat_id)) return prev;
+        return [chat, ...prev];
+      });
+
       loadChats();
       navigate("/app");
       setMobilePanelView("chat");
@@ -312,14 +337,19 @@ export default function AppShell() {
     playSound("outgoing");
     bumpChat(chat.chat_id);
 
+    // Patch helper to update in-progress upload state in both active messages and cache
     const patch = (updates) => {
-      setMessages((prev) => prev.map((m) => m.message_id === client_id ? { ...m, ...updates } : m));
+      // Only update the active messages UI state if the user is still viewing the chat where the upload started
+      if (activeChatRef.current?.chat_id === chat.chat_id) {
+        setMessages((prev) => prev.map((m) => m.message_id === client_id ? { ...m, ...updates } : m));
+      }
+      // Always update the persistent messages cache so switching back restores correct progress
       const c = messagesCacheRef.current[chat.chat_id] || [];
       const idx = c.findIndex((m) => m.message_id === client_id);
       if (idx !== -1) c[idx] = { ...c[idx], ...updates };
     };
 
-    // Run the actual send asynchronously so the UI is never blocked
+    // Run the actual send asynchronously so the UI is never blocked (multi-tasking)
     (async () => {
       try {
         let file_id = null;
@@ -375,13 +405,17 @@ export default function AppShell() {
                 transfer_mode: "webrtc",
                 client_id,
               });
-              setMessages((prev) => {
-                const idx = prev.findIndex((m) => m.message_id === client_id);
-                if (idx === -1) return prev;
-                const next = prev.slice();
-                next[idx] = { ...res.data, client_id, _animate: false };
-                return next;
-              });
+              
+              // Only update UI if the chat is still active (no bleed to other chats)
+              if (activeChatRef.current?.chat_id === chat.chat_id) {
+                setMessages((prev) => {
+                  const idx = prev.findIndex((m) => m.message_id === client_id);
+                  if (idx === -1) return prev;
+                  const next = prev.slice();
+                  next[idx] = { ...res.data, client_id, _animate: false };
+                  return next;
+                });
+              }
               const c = messagesCacheRef.current[chat.chat_id] || [];
               const ci = c.findIndex((m) => m.message_id === client_id);
               if (ci !== -1) c[ci] = { ...res.data, client_id, _animate: false };
@@ -396,7 +430,7 @@ export default function AppShell() {
           }
         }
 
-        // Cloud path
+        // Cloud path fallback (sends file upload to local server fallback)
         if (file) {
           const fd = new FormData();
           fd.append("file", file);
@@ -422,13 +456,17 @@ export default function AppShell() {
           transfer_mode,
           client_id,
         });
-        setMessages((prev) => {
-          const idx = prev.findIndex((m) => m.message_id === client_id);
-          if (idx === -1) return prev;
-          const next = prev.slice();
-          next[idx] = { ...res.data, client_id, _animate: false };
-          return next;
-        });
+        
+        // Only update UI if the chat is still active (no bleed to other chats)
+        if (activeChatRef.current?.chat_id === chat.chat_id) {
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.message_id === client_id);
+            if (idx === -1) return prev;
+            const next = prev.slice();
+            next[idx] = { ...res.data, client_id, _animate: false };
+            return next;
+          });
+        }
         const c = messagesCacheRef.current[chat.chat_id] || [];
         const ci = c.findIndex((m) => m.message_id === client_id);
         if (ci !== -1) c[ci] = { ...res.data, client_id, _animate: false };

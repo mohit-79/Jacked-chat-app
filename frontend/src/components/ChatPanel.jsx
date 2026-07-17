@@ -284,14 +284,26 @@ export default function ChatPanel({
   onSend, onTyping, onRetry, onRequestResend, onCancelWebRTC, onMobileBack
 }) {
   const [text, setText] = useState("");
-  const [file, setFile] = useState(null);
-  // Each ongoing transfer gets its own progress entry keyed by client_id
-  // const [transferProgress, setTransferProgress] = useState({});
+  // Change state from single 'file' to 'files' array to support multiple file selection
+  const [files, setFiles] = useState([]);
+  
   const fileInputRef = useRef(null);
+  const inputRef = useRef(null); // Ref for focusing the chatbox textarea
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
   const wasNearBottomRef = useRef(true);
   const prevChatIdRef = useRef(null);
+
+  // Auto-focus the chatbox textarea when the selected active chat changes
+  useEffect(() => {
+    if (chat?.chat_id) {
+      // Small timeout to ensure the DOM has updated and is ready to receive focus
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [chat?.chat_id]);
 
   const otherUserIsPeer = chat?.other_user && peers.some((p) => p.user_id === chat.other_user.user_id);
   const canUseWebRTC = chat?.type === "dm" && otherUserIsPeer;
@@ -348,28 +360,40 @@ export default function ChatPanel({
     );
   }
 
+  // Handle message sending (can be text, files, or both)
   const handleSend = (e) => {
     e?.preventDefault();
-    if (!text && !file) return;
+    if (!text && files.length === 0) return;
 
     const sentText = text;
-    const sentFile = file;
+    const sentFiles = [...files];
+    
     setText("");
-    setFile(null);
+    setFiles([]); // Clear file queue
     if (fileInputRef.current) fileInputRef.current.value = "";
     wasNearBottomRef.current = true;
 
-    // Fire-and-forget: does NOT await, so UI is never blocked
-    // Multiple sends can be in-flight simultaneously
-    onSend({
-      content: sentText,
-      file: sentFile,
-      preferWebRTC: canUseWebRTC,
-      onProgress: ({ percent, bytesPerSec }) => {
-        // Progress is handled inside the optimistic message patch in AppShell
-        // Nothing extra needed here
-      },
-    });
+    if (sentFiles.length > 0) {
+      // Loop and send each file as its own separate message.
+      // We attach the message text content to the first file's message.
+      sentFiles.forEach((f, idx) => {
+        onSend({
+          content: idx === 0 ? sentText : "",
+          file: f,
+          preferWebRTC: canUseWebRTC,
+        });
+      });
+    } else if (sentText) {
+      // Send regular text-only message
+      onSend({
+        content: sentText,
+        file: null,
+        preferWebRTC: canUseWebRTC,
+      });
+    }
+    
+    // Maintain cursor focus inside the chatbox after sending
+    inputRef.current?.focus();
   };
 
   return (
@@ -446,40 +470,66 @@ export default function ChatPanel({
 
       {/* Input area */}
       <div className="p-3 md:p-4 border-t-2 border-[#1A1A1A] bg-white shrink-0">
-        {/* Pending file preview */}
-        {file && (
-          <div className="mb-2 flex items-center gap-3 p-2 border-2 border-[#1A1A1A] rounded-xl bg-[#FFDFD3]">
-            <ImageIcon size={16} />
-            <span className="text-sm flex-1 truncate">{file.name}</span>
-            <span className="text-xs text-[#4A4A4A]">{bytesPretty(file.size)}</span>
-            {canUseWebRTC
-              ? <span className="text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 bg-[#A8E6CF] border border-[#1A1A1A] rounded-full"><Zap size={9} /> WebRTC</span>
-              : <span className="text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 bg-white border border-[#1A1A1A] rounded-full"><Cloud size={9} /> Cloud</span>
-            }
-            <button type="button" onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}>
-              <X size={14} />
-            </button>
+        {/* Pending files list preview */}
+        {files.length > 0 && (
+          <div className="space-y-1.5 mb-2 max-h-36 overflow-y-auto">
+            {files.map((f, idx) => (
+              <div key={idx} className="flex items-center gap-3 p-2 border-2 border-[#1A1A1A] rounded-xl bg-[#FFDFD3]">
+                <ImageIcon size={16} className="text-[#1A1A1A] shrink-0" />
+                <span className="text-sm flex-1 truncate font-semibold">{f.name}</span>
+                <span className="text-xs text-[#4A4A4A] shrink-0">{bytesPretty(f.size)}</span>
+                {canUseWebRTC
+                  ? <span className="text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 bg-[#A8E6CF] border border-[#1A1A1A] rounded-full shrink-0"><Zap size={9} /> WebRTC</span>
+                  : <span className="text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 bg-white border border-[#1A1A1A] rounded-full shrink-0"><Cloud size={9} /> Cloud</span>
+                }
+                <button type="button" onClick={() => setFiles(prev => prev.filter((_, i) => i !== idx))} className="shrink-0">
+                  <X size={14} className="hover:text-red-500" />
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
         <div className="flex items-end gap-2">
-          <input ref={fileInputRef} type="file" hidden onChange={(e) => setFile(e.target.files[0] || null)} data-testid="file-input" />
+          {/* File Input: added multiple support and reset on change to allow re-selecting */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              const selected = Array.from(e.target.files || []);
+              if (selected.length > 0) {
+                setFiles(prev => [...prev, ...selected]);
+              }
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              inputRef.current?.focus(); // Focus textarea immediately after file selection
+            }}
+            data-testid="file-input"
+          />
           <button type="button" data-testid="attach-file-btn" onClick={() => fileInputRef.current?.click()}
             className="nb-btn bg-white rounded-xl p-2.5 md:p-3 shrink-0">
             <Paperclip size={18} />
           </button>
           <textarea
+            ref={inputRef} // Attached focus ref
             data-testid="message-input"
             value={text}
             onChange={(e) => { setText(e.target.value); onTyping?.(); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            onKeyDown={(e) => {
+              // Enter sends the message (and any selected files)
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             placeholder="Type a message..."
             rows={1}
             className="nb-input flex-1 resize-none max-h-32 text-[15px]"
           />
           <button
             onClick={handleSend}
-            disabled={!text && !file}
+            disabled={!text && files.length === 0} // Enabled when text is entered OR at least one file is queued
             data-testid="send-message-btn"
             className="nb-btn bg-[#FFD3B6] hover:bg-[#FFC099] rounded-xl p-2.5 md:p-3 disabled:opacity-50 shrink-0"
           >
