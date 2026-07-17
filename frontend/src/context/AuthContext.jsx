@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useUser, useAuth as useClerkAuth } from "@clerk/react";
 import { api } from "@/lib/api";
 
@@ -10,7 +10,8 @@ export function AuthProvider({ children }) {
   const { signOut } = useClerkAuth();
   
   const [dbUser, setDbUser] = useState(null);
-  const [pinging, setPinging] = useState(false);
+  const [syncAttempted, setSyncAttempted] = useState(false);
+  const pingingRef = useRef(false);
 
   // Parse Clerk user into the schema that HomeNexus expects
   const authUser = clerkUser ? {
@@ -25,8 +26,8 @@ export function AuthProvider({ children }) {
 
   // Function to register/ping user in backend database to record latest public IP
   const pingBackend = useCallback(async (userToPing) => {
-    if (!userToPing || pinging) return;
-    setPinging(true);
+    if (!userToPing || pingingRef.current) return;
+    pingingRef.current = true;
     try {
       log("pinging backend to register/sync profile...", userToPing.user_id);
       const res = await api.post("/users/ping", {
@@ -39,12 +40,14 @@ export function AuthProvider({ children }) {
     } catch (e) {
       log("backend sync failed:", e?.response?.status || e.message);
     } finally {
-      setPinging(false);
+      pingingRef.current = false;
+      setSyncAttempted(true);
     }
-  }, [pinging]);
+  }, []);
 
   useEffect(() => {
     if (clerkUser) {
+      setSyncAttempted(false);
       pingBackend({
         user_id: clerkUser.id,
         name: clerkUser.fullName || clerkUser.username || clerkUser.primaryEmailAddress?.emailAddress?.split("@")[0] || "User",
@@ -53,6 +56,7 @@ export function AuthProvider({ children }) {
       });
     } else {
       setDbUser(null);
+      setSyncAttempted(false);
     }
   }, [clerkUser, pingBackend]);
 
@@ -77,7 +81,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const loading = !isLoaded || (clerkUser && !dbUser && pinging);
+  const loading = !isLoaded || (clerkUser && !syncAttempted);
 
   return (
     <AuthContext.Provider value={{ 
