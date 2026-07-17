@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io } from "socket.io-client";
-import { getClerkToken } from "@/lib/api";
+import { getClerkToken } from "./api";
 
 const log = (...args) => console.log("[Socket.IO]", ...args);
 
