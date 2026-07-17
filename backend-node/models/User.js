@@ -18,6 +18,11 @@ const userSchema = new mongoose.Schema({
     type: String, 
     required: true 
   },
+  // For backwards compatibility with legacy database accounts
+  user_id: {
+    type: String,
+    unique: true
+  },
   // URL to user's profile image / avatar
   picture: { 
     type: String, 
@@ -37,6 +42,17 @@ const userSchema = new mongoose.Schema({
 }, {
   // Automatically adds 'createdAt' and 'updatedAt' fields to the document
   timestamps: true 
+});
+
+// Pre-save hook to keep clerkId and user_id in sync
+userSchema.pre("save", function(next) {
+  if (this.clerkId && !this.user_id) {
+    this.user_id = this.clerkId;
+  }
+  if (this.user_id && !this.clerkId) {
+    this.clerkId = this.user_id;
+  }
+  next();
 });
 
 // Create the model class using the schema and export it so other files can query the users collection
