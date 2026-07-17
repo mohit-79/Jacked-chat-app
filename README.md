@@ -42,25 +42,25 @@ graph TD
   end
 
   %% Auth Actions
-  ClerkA -.->|OAuth / Token JWT| ClerkService["Clerk Auth API"]
-  ClerkB -.->|OAuth / Token JWT| ClerkService
+  ClerkA -.->|"OAuth / Token JWT"| ClerkService["Clerk Auth API"]
+  ClerkB -.->|"OAuth / Token JWT"| ClerkService
   
-  ReactA -->|1. HTTP /api/users/ping| Express
-  ReactA -->|2. HTTP /api/chats| Express
-  ReactA -->|3. Fallback Upload /api/upload| Express
+  ReactA -->|"1. HTTP /api/users/ping"| Express
+  ReactA -->|"2. HTTP /api/chats"| Express
+  ReactA -->|"3. Fallback Upload /api/upload"| Express
 
   %% DB Actions
-  Express -->|Read / Write| Mongo
+  Express -->|"Read / Write"| Mongo
 
   %% Socket Connections
-  SocketA <==>|Websocket Connection| SocketServer
-  SocketB <==>|Websocket Connection| SocketServer
+  SocketA <==>|"Websocket Connection"| SocketServer
+  SocketB <==>|"Websocket Connection"| SocketServer
 
   %% Signaling
-  SocketServer <==>|Relays WebRTC SDP & ICE Candidates| SocketServer
+  SocketServer -.->|"Relays WebRTC SDP & ICE Candidates"| SocketServer
   
   %% Direct P2P Channel
-  WebRTCA <==.==>|4. Direct WebRTC P2P Data Channel (Fast Files)| WebRTCB
+  WebRTCA <-->|"4. Direct WebRTC P2P Data Channel (Fast Files)"| WebRTCB
 ```
 
 ### 2. Hybrid File Transfer Pipeline (P2P with Cloud Fallback)
@@ -68,16 +68,16 @@ When a file is sent, HomeNexus determines if it can establish a direct P2P link 
 
 ```mermaid
 flowchart TD
-    Start([User Attaches Files & Hits Send]) --> CheckPeers{Is Recipient on Same LAN?}
-    CheckPeers -- Yes --> WebRTCInit[Initiate WebRTC Signaling via Socket.IO]
-    CheckPeers -- No --> CloudUpload[Upload file to local server via POST /api/upload]
+    Start(["User Attaches Files & Hits Send"]) --> CheckPeers{"Is Recipient on Same LAN?"}
+    CheckPeers -- "Yes" --> WebRTCInit["Initiate WebRTC Signaling via Socket.IO"]
+    CheckPeers -- "No" --> CloudUpload["Upload file to local server via POST /api/upload"]
     
-    WebRTCInit --> RTCConnect{WebRTC Connection Established?}
-    RTCConnect -- Yes (Within 12s Timeout) --> P2PTransfer[Transfer File in 256KB Chunks directly P2P]
-    RTCConnect -- No / Timeout --> FallbackAlert[Log WebRTC Timeout & Fallback to Cloud]
+    WebRTCInit --> RTCConnect{"WebRTC Connection Established?"}
+    RTCConnect -- "Yes (Within 12s Timeout)" --> P2PTransfer["Transfer File in 256KB Chunks directly P2P"]
+    RTCConnect -- "No / Timeout" --> FallbackAlert["Log WebRTC Timeout & Fallback to Cloud"]
     
     FallbackAlert --> CloudUpload
-    P2PTransfer --> Finish([File Sent Successfully])
+    P2PTransfer --> Finish(["File Sent Successfully"])
     CloudUpload --> Finish
 ```
 
