@@ -1,98 +1,165 @@
-# HomeNexus Lite — Home Network Chat & WebRTC File Transfer 🏡🚀
+# HomeNexus — Private Local LAN Chat & Hybrid WebRTC File Transfer 🏡🚀
 
-**HomeNexus Lite** is a WhatsApp-like private chat application designed for home networks. It enables users on the same WiFi network to discover each other automatically and transfer files at gigabit speeds directly between their browsers using **WebRTC Data Channels**, with an Express-based cloud fallback for out-of-network transfers.
+**HomeNexus** is a WhatsApp-inspired real-time private chat application designed for home networks. It enables users on the same WiFi/LAN network to discover each other automatically, start instant direct message rooms, and transfer files at gigabit speeds directly between their browsers using **WebRTC Data Channels**, with an Express-based cloud upload fallback for out-of-network transfers.
 
 ---
 
-## 🌟 Key Features
+## 🏗️ System Architecture & Connection Flow
 
-* **Clerk Authentication**: Integrates Clerk SDK on the frontend and backend middleware to handle secure user signup, login, OAuth, and token sessions without custom database password code.
-* **WebRTC Direct P2P File Transfer**: Bypasses the server entirely when sharing files with peers on the same local network, achieving maximum WiFi throughput and total privacy.
-* **Cloud Upload Fallback**: Automatically uploads files to the Node.js server using `multer` when direct P2P connections fail or when communicating with out-of-network users.
-* **Same-LAN Peer Discovery**: Automatically detects users sharing your public IP address. Supports searching users with a **"Same LAN only"** filter.
-* **Real-time Engine**: Built on **Socket.IO** rooms to handle instant text messaging, typing alerts, and WebRTC connection signaling handshakes.
-* **Chat Configurations**: Public lobby, direct messaging (DMs), and self-notes.
+HomeNexus uses a hybrid networking model. It combines a central server for authentication, REST API requests, and Socket.IO signaling with direct peer-to-peer (P2P) connections for ultra-fast file transfer.
+
+### 1. General System Architecture
+The diagram below illustrates how components interact:
+* **HTTP APIs** are used for user syncs, health checks, and historical message logging.
+* **Socket.IO** manages real-time messaging, typing events, and WebRTC handshakes (SDP offers/answers and ICE Candidates).
+* **WebRTC Data Channels** are opened directly between browsers for same-LAN file transmissions, bypassing the server completely.
+
+```mermaid
+graph TD
+  subgraph User_A["User A Browser (Same LAN)"]
+    ReactA["React UI"]
+    ClerkA["Clerk React SDK"]
+    SocketA["Socket.IO Client"]
+    WebRTCA["WebRTC Data Engine"]
+  end
+
+  subgraph User_B["User B Browser (Same LAN)"]
+    ReactB["React UI"]
+    ClerkB["Clerk React SDK"]
+    SocketB["Socket.IO Client"]
+    WebRTCB["WebRTC Data Engine"]
+  end
+
+  subgraph Backend["HomeNexus Express Server"]
+    Express["Express.js Server"]
+    ClerkMiddleware["Clerk Auth Middleware"]
+    SocketServer["Socket.IO Signaling Server"]
+    Multer["Multer File Fallback Storage"]
+  end
+
+  subgraph Database["MongoDB Database"]
+    Mongo["Mongoose Models"]
+  end
+
+  %% Auth Actions
+  ClerkA -.->|OAuth / Token JWT| ClerkService["Clerk Auth API"]
+  ClerkB -.->|OAuth / Token JWT| ClerkService
+  
+  ReactA -->|1. HTTP /api/users/ping| Express
+  ReactA -->|2. HTTP /api/chats| Express
+  ReactA -->|3. Fallback Upload /api/upload| Express
+
+  %% DB Actions
+  Express -->|Read / Write| Mongo
+
+  %% Socket Connections
+  SocketA <==>|Websocket Connection| SocketServer
+  SocketB <==>|Websocket Connection| SocketServer
+
+  %% Signaling
+  SocketServer <==>|Relays WebRTC SDP & ICE Candidates| SocketServer
+  
+  %% Direct P2P Channel
+  WebRTCA <==.==>|4. Direct WebRTC P2P Data Channel (Fast Files)| WebRTCB
+```
+
+### 2. Hybrid File Transfer Pipeline (P2P with Cloud Fallback)
+When a file is sent, HomeNexus determines if it can establish a direct P2P link or if it needs to fallback to storing the file on the server:
+
+```mermaid
+flowchart TD
+    Start([User Attaches Files & Hits Send]) --> CheckPeers{Is Recipient on Same LAN?}
+    CheckPeers -- Yes --> WebRTCInit[Initiate WebRTC Signaling via Socket.IO]
+    CheckPeers -- No --> CloudUpload[Upload file to local server via POST /api/upload]
+    
+    WebRTCInit --> RTCConnect{WebRTC Connection Established?}
+    RTCConnect -- Yes (Within 12s Timeout) --> P2PTransfer[Transfer File in 256KB Chunks directly P2P]
+    RTCConnect -- No / Timeout --> FallbackAlert[Log WebRTC Timeout & Fallback to Cloud]
+    
+    FallbackAlert --> CloudUpload
+    P2PTransfer --> Finish([File Sent Successfully])
+    CloudUpload --> Finish
+```
 
 ---
 
 ## 🛠️ The Tech Stack
 
-* **Frontend**: React (Vite / Craco), Clerk React SDK, Socket.IO client, Axios, Tailwind CSS, Lucide icons, Sonner notifications.
-* **Backend**: Node.js, Express.js, Mongoose (MongoDB ODM), Clerk Express middleware, Socket.IO server, Multer.
-* **Database**: MongoDB (Atlas or Local) storing user profiles and chat message histories.
+| Technology | Role in Application | Detailed Purpose |
+| :--- | :--- | :--- |
+| **React (v18)** | Frontend UI | Powers the Neo-brutalist dashboard, message feeds, and interactive sidebar. |
+| **Node.js & Express** | Server Engine | Serves API routes, handles files, and hosts WebSockets. |
+| **MongoDB & Mongoose** | Persistent Storage | Stores user profiles, messaging history, and file metadata documents. |
+| **Clerk React & Express** | Secure Authentication | Manages user login sessions, signup routing, and secure API JWT authorization. |
+| **Socket.IO** | Real-time WebSockets | Relays instant text chat messages, typing events, and WebRTC handshakes. |
+| **WebRTC API** | P2P Data Channels | Transmits files directly between LAN clients, bypassing server bandwidth limits. |
+| **Multer** | Multipart Form Parser | Handles file upload streaming to server storage when WebRTC fallback is active. |
+
+---
+
+## 🌟 Key Features
+
+* **Clerk Identity Verification**: Users log in securely via Clerk's official React widgets. Secure endpoints on the backend decrypt and verify the session token JWT.
+* **Auto-Discovery (LAN Pings)**: The client checks the server (`POST /api/users/ping`) which logs their public IP. The search interface allows filtering users with a **"Same LAN only"** filter.
+* **Smart File Multi-tasking**:
+  * Select and queue **multiple files** to send at once.
+  * In-progress transfers run as concurrent asynchronous operations, letting you **switch chat rooms** while the transfer continues in the background.
+* **WebRTC Chunking & Flow Control**: Direct files are sliced into `256KB` buffer arrays. The engine monitors `bufferedAmount` to adjust speeds dynamically and prevent browser buffer overflow.
+* **Auto-Focus Chatbox**: The message entry field focuses automatically when switching rooms or attaching files for a faster, keyboard-centric chat flow.
 
 ---
 
 ## 🚀 Download & Installation Guide
 
-Follow these steps to clone the repository, install dependencies, configure credentials, and run the application locally on your machine.
-
 ### 1. Clone the Repository
-Open your terminal and clone the project from GitHub, then navigate into the project root directory:
 ```bash
-git clone https://github.com/your-username/Jacked-chat-app-main.git
+git clone https://github.com/mohit-79/Jacked-chat-app.git
 cd Jacked-chat-app-main
 ```
 
----
-
 ### 2. Backend Setup (`backend-node`)
-
 1. Navigate to the backend directory:
    ```bash
    cd backend-node
    ```
-2. Install all required Node packages:
+2. Install dependencies:
    ```bash
    npm install
    ```
-3. Create a `.env` configuration file:
-   ```bash
-   touch .env
-   ```
-4. Open the `.env` file and populate it with your database and Clerk credentials:
+3. Create a `.env` file:
    ```env
    PORT=8001
    MONGO_URL="your-mongodb-connection-string"
-   DB_NAME="homenexus"
+   DB_NAME="test_database"
    CORS_ORIGIN="http://localhost:3000"
 
-   # Clerk Authentication Keys (Get these from your Clerk dashboard: dashboard.clerk.com)
+   # Clerk Authentication Keys (From your Clerk Dashboard)
    CLERK_PUBLISHABLE_KEY=pk_test_...
    CLERK_SECRET_KEY=sk_test_...
    ```
-5. Start the backend development server (runs nodemon for auto-reloading on changes):
+4. Run in development mode:
    ```bash
    npm run dev
    ```
-   *The backend will boot up on `http://localhost:8001`.*
-
----
 
 ### 3. Frontend Setup (`frontend`)
-
-1. Open a new terminal window, navigate back to the project root, and enter the frontend folder:
+1. Navigate to the frontend directory:
    ```bash
-   cd frontend
+   cd ../frontend
    ```
-2. Install the frontend Node dependencies:
+2. Install dependencies:
    ```bash
    npm install
    ```
-3. Create a `.env` file for the React application:
-   ```bash
-   touch .env
-   ```
-4. Open the `.env` file and add the backend URL and your Clerk publishable key:
+3. Create a `.env` file:
    ```env
    REACT_APP_BACKEND_URL=http://localhost:8001
    REACT_APP_CLERK_PUBLISHABLE_KEY=pk_test_...
    ```
-5. Start the React development server:
+4. Run in development mode:
    ```bash
-   npm run dev
+   npm start
    ```
-   *Your browser will automatically open the app at `http://localhost:3000`!*
 
 ---
 
@@ -100,28 +167,34 @@ cd Jacked-chat-app-main
 
 ```
 backend-node/
-  server.js             # Express app: Clerk auth routes, chats/messages REST APIs, and Socket.IO server
+  server.js             # Express entry point: registers routes, CORS, and binds Socket.IO signaling
+  config/
+    db.js               # MongoDB Mongoose connection config
+    multer.js           # Multer storage config for cloud file upload fallback
   models/
-    User.js             # User Mongoose schema (stores Clerk profile and public IPs)
-    Message.js          # Message Mongoose schema (stores chat logs in snake_case format)
-    File.js             # File Mongoose schema (tracks local server-stored fallback files)
-  uploads/              # Directory where cloud fallback file uploads are stored
+    User.js             # Schema storing Clerk IDs and public IPs for LAN matching
+    Message.js          # Schema storing messages in snake_case format
+    File.js             # Schema storing metadata of local server upload fallbacks
+  routes/
+    users.js            # User pings, profile syncs, and LAN searches
+    chats.js            # DM routing, room queries, and history aggregation
+    files.js            # Server upload fallbacks and secure download streams
+  sockets/
+    socketManager.js    # Auth verification middleware and WebRTC signal relay loops
 
 frontend/src/
-  App.js                # React Router + Clerk Provider configuration
+  App.js                # App route mapping and Clerk Provider configuration
   context/
-    AuthContext.jsx     # Backward-compatible auth context adapter wrapping Clerk useUser/useAuth hooks
+    AuthContext.jsx     # Backward-compatible hook adapter bridging local contexts to Clerk API
   lib/
-    api.js              # Axios wrapper inserting Clerk Bearer JWT tokens dynamically
-    websocket.js        # Socket.IO React hook wrapper handling signal/typing event relays
-    webrtc.js           # P2P WebRTC data channel engine breaking down files into 256KB chunks
+    api.js              # Axios interceptors adding Clerk Bearer JWT tokens dynamically
+    websocket.js        # Socket.IO React hook handling signals and typing events
+    webrtc.js           # WebRTC chunk reader and channel buffering coordinator
   components/
-    Sidebar.jsx         # Conversational feed list with live LAN search filtering
-    ChatPanel.jsx       # Chat window showing message threads, typing alerts, and file progress bars
+    Sidebar.jsx         # Search and active chat rooms list with LAN filter
+    ChatPanel.jsx       # Chat UI, multi-file previewer, and input ref controllers
   pages/
-    Login.jsx           # Main landing screen containing Clerk's styled SignIn / SignUp components
-    AppShell.jsx        # Dashboard orchestrator fetching previous chats and connecting real-time sockets
-    ProfilePage.jsx     # Profile and local network status panel
+    AppShell.jsx        # Shell dashboard routing chats, websocket connections, and file sends
 ```
 
 ---
