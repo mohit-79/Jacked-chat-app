@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Home as HomeIcon, Zap, MessageCircle, Sparkles } from "lucide-react";

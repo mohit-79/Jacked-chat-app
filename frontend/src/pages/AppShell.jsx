@@ -480,7 +480,6 @@ export default function AppShell() {
   const handleOpenStories = useCallback(() => {}, []);
   const handleOpenProfile = useCallback(() => navigate("/app/profile"), [navigate]);
   const handleOpenFriends = useCallback(() => {}, []);
-  const handleCloseFriends = useCallback(() => {}, []);
   const handleLogout = useCallback(async () => { await logout(); navigate("/"); }, [logout, navigate]);
   const handleTyping = useCallback(() => {
     const chat = activeChatRef.current;

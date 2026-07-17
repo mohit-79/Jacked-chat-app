@@ -54,7 +54,7 @@ export function AuthProvider({ children }) {
     } else {
       setDbUser(null);
     }
-  }, [clerkUser]);
+  }, [clerkUser, pingBackend]);
 
   const logout = async () => {
     log("logging out via Clerk...");

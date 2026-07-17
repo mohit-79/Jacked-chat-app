@@ -1,7 +1,6 @@
 import { Home, Hash, User as UserIcon, LogOut, Users, Wifi, WifiOff, Search } from "lucide-react";
 import { useState, useEffect, useMemo, memo } from "react";
 import { api } from "@/lib/api";
-import { toast } from "sonner";
 
 function Sidebar({
   user, chats, peers, activeChat,
