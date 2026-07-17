@@ -199,11 +199,3 @@ frontend/src/
 
 ---
 
-## 💡 Developer Resources (Interview Guides)
-
-If you are developing this application or preparing to explain it to an interviewer, we have created helpful guides inside the `hfolder` directory:
-
-* [simple_guide.md](file:///home/harjani/Desktop/anti/Jacked-chat-app-main/hfolder/simple_guide.md): Details the simplified architecture, Clerk integration patterns, database schemas, and Socket.IO relays. Includes interview talking points.
-* [todo.md](file:///home/harjani/Desktop/anti/Jacked-chat-app-main/hfolder/todo.md): Detailed migration checklists and validation tests for each phase.
-* [phase_log.md](file:///home/harjani/Desktop/anti/Jacked-chat-app-main/hfolder/phase_log.md): Record of code changes, verification steps, and status updates for the build phases.
-* [agents.md](file:///home/harjani/Desktop/anti/Jacked-chat-app-main/hfolder/agents.md): Rules and loops for AI agents executing phase-wise changes.
