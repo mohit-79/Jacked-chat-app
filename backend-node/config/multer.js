@@ -8,18 +8,13 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir);
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const fileId = crypto.randomUUID();
-    const ext = path.extname(file.originalname);
-    cb(null, `${fileId}${ext}`);
-  }
+// Memory storage is used to store files in MongoDB Atlas,
+// surviving ephemeral server rebuilds on Render.
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 15 * 1024 * 1024 } // limit to 15MB to stay within MongoDB 16MB document limit
 });
-
-const upload = multer({ storage });
 
 module.exports = {
   upload,

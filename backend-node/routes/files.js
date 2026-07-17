@@ -15,7 +15,11 @@ router.post("/upload", ClerkExpressRequireAuth(), upload.single("file"), async (
       return res.status(400).json({ error: "No file provided for upload." });
     }
 
-    const fileId = req.file.filename.split(".")[0]; // extract generated UUID
+    const crypto = require("crypto");
+    const fileId = crypto.randomUUID();
+    const ext = path.extname(req.file.originalname);
+    const storagePath = `${fileId}${ext}`;
+
     console.log(`[Upload] File upload received from User: ${clerkId}. Filename: ${req.file.originalname} Size: ${req.file.size} bytes`);
 
     const fileDoc = new File({
@@ -23,13 +27,18 @@ router.post("/upload", ClerkExpressRequireAuth(), upload.single("file"), async (
       filename: req.file.originalname,
       content_type: req.file.mimetype || "application/octet-stream",
       size: req.file.size,
-      storage_path: req.file.filename,
-      owner_id: clerkId
+      storage_path: storagePath,
+      owner_id: clerkId,
+      data: req.file.buffer // Store binary buffer directly in MongoDB Atlas
     });
 
     await fileDoc.save();
 
-    res.status(201).json(fileDoc);
+    // Do not return raw binary data in response JSON
+    const responseDoc = fileDoc.toObject();
+    delete responseDoc.data;
+
+    res.status(201).json(responseDoc);
   } catch (error) {
     next(error);
   }
@@ -72,15 +81,22 @@ router.get("/files/:fileId/download", async (req, res, next) => {
       return res.status(404).json({ error: "File not found." });
     }
 
-    const filePath = path.join(uploadsDir, fileRecord.storage_path);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: "Physical file not found on disk." });
+    // 1. Serve from MongoDB database buffer first (fully persistent across server redeploys)
+    if (fileRecord.data) {
+      res.setHeader("Content-Type", fileRecord.content_type);
+      res.setHeader("Content-Disposition", `inline; filename="${fileRecord.filename}"`);
+      return res.send(fileRecord.data);
     }
 
-    // Stream file stream to client
-    res.setHeader("Content-Type", fileRecord.content_type);
-    res.setHeader("Content-Disposition", `inline; filename="${fileRecord.filename}"`);
-    res.sendFile(filePath);
+    // 2. Fallback to local server disk (for older files saved locally before this migration)
+    const filePath = path.join(uploadsDir, fileRecord.storage_path);
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Type", fileRecord.content_type);
+      res.setHeader("Content-Disposition", `inline; filename="${fileRecord.filename}"`);
+      return res.sendFile(filePath);
+    }
+
+    return res.status(404).json({ error: "File data has been removed from ephemeral disk." });
   } catch (error) {
     next(error);
   }

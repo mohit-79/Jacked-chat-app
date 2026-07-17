@@ -32,6 +32,11 @@ const fileSchema = new mongoose.Schema({
   owner_id: { 
     type: String, 
     required: true 
+  },
+  // The actual binary data of the file (stored directly in MongoDB for persistence across ephemeral restarts)
+  data: {
+    type: Buffer,
+    default: null
   }
 }, {
   // Configures Mongoose to add timestamps using snake_case names
